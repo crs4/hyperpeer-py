@@ -65,7 +65,7 @@ class FrameConsumerFeeder:
 
 class Peer:
     def __init__(self, serverAddress, peer_type='media-server', id=None, key=None, media_source=None, media_sink=None, frame_generator=None, frame_consumer=None):
-        self.url = 'ws://' + serverAddress + '/' + peer_type
+        self.url = serverAddress + '/' + peer_type
         if id:
            self.url += '/' + id
         if key:

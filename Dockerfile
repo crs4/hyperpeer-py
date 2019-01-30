@@ -19,4 +19,5 @@ RUN pip install --trusted-host pypi.python.org -r hp-requirements.txt
 
 #EXPOSE 8080
 
-ENTRYPOINT exec python -m unittest -v /test/test.py
+CMD python -m unittest -v /test/test.py
+#ENTRYPOINT exec python -m unittest -v /test/test.py

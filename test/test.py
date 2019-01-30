@@ -41,9 +41,9 @@ class TestPeer(unittest.TestCase):
             print('Outs: ' + outs.decode('utf8') + '. Errs: ' + errs.decode('utf8'))
 
     def setUp(self):
-        self.peer = Peer('localhost:8080',
+        self.peer = Peer('ws://localhost:8080',
                          peer_type='media-server', id='server1')
-        self.peer2 = Peer('localhost:8080', peer_type='test', id='server2')
+        self.peer2 = Peer('ws://localhost:8080', peer_type='test', id='server2')
 
     def tearDown(self):
         async def clean():
@@ -199,9 +199,9 @@ class TestPeer(unittest.TestCase):
             #print('received frame: ' + str(len(self.received_frames)))
             await self.peer.send({'credit': 2})
 
-        self.peer2 = Peer('localhost:8080', peer_type='test',
+        self.peer2 = Peer('ws://localhost:8080', peer_type='test',
                           id='server2', frame_generator=video_frame_generator)
-        self.peer = Peer('localhost:8080',
+        self.peer = Peer('ws://localhost:8080',
                          peer_type='media-server', id='server1', frame_consumer=video_frame_consumer)
 
         await self.peer.open()
