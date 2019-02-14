@@ -1,3 +1,10 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Mon Feb  11 16:00:00 2019
+
+@author: Jose F. Saenz-Cogollo
+
+"""
 import asyncio
 from aiortc import RTCPeerConnection, RTCSessionDescription, VideoStreamTrack, RTCIceCandidate
 from aiortc.contrib.media import MediaBlackhole, MediaPlayer, MediaRecorder
@@ -9,9 +16,23 @@ from enum import Enum, auto
 import inspect
 import time
 import logging
-#logging.basicConfig(level=logging.INFO)
+
+logging.basicConfig(level=logging.INFO)
 
 class PeerState(Enum):
+    """
+    `Enum` class that represents the possible states of a Peer instance.
+
+    # Attributes
+    STARTING (enum): connecting to signaling server.
+    ONLINE (enum): connected to signaling server but not paired to any peer.
+    LISTENING (enum): pairing and establishing a WebRTC connection with peer.
+    CONNECTING (enum): WebRTC peer connection and data channel are ready.
+    CONNECTED (enum): closing peer connection.
+    DISCONNECTING (enum): waiting for incoming connections.
+    CLOSING (enum): disconnecting from signaling server.
+    CLOSED (enum): disconnected from signaling server and not longer usable.
+    """
     STARTING = auto()
     ONLINE = auto()
     LISTENING = auto()
@@ -25,7 +46,7 @@ class PeerState(Enum):
 class FrameGeneratorTrack(VideoStreamTrack):
     def __init__(self, frame_generator):
         if not inspect.isgeneratorfunction(frame_generator):
-            raise TypeError('frame_generator should be an asynchronous generator function')
+            raise TypeError('frame_generator should be a generator function')
         super().__init__()  # don't forget this!
         self.generator = frame_generator()
         self.last_time = time.time()
@@ -47,9 +68,9 @@ class FrameGeneratorTrack(VideoStreamTrack):
 
 class FrameConsumerFeeder:
     def __init__(self, frame_consumer):
-        if not inspect.iscoroutinefunction(frame_consumer):
+        if not inspect.isfunction(frame_consumer):
             raise TypeError(
-                'frame_consumer should be a coroutine function')
+                'frame_consumer should be a function')
         self.consumer = frame_consumer
         self.last_time = time.time()
 
@@ -61,10 +82,111 @@ class FrameConsumerFeeder:
             time_base = video_frame.time_base
             #logging.debug(str(time.time()-self.last_time))
             self.last_time = time.time()
-            await self.consumer(frame)
+            self.consumer(frame)
 
 class Peer:
-    def __init__(self, serverAddress, peer_type='media-server', id=None, key=None, media_source=None, media_sink=None, frame_generator=None, frame_consumer=None):
+    """
+    The Peer class represents the local peer in a WebRTC application based on Hyperpeer. 
+    It manages both the Websocket connection with the signaling server and the peer-to-peer communication via WebRTC with remote peers.
+    
+    # Attributes
+    id (string): id of the instance
+    readyState (PeerState): State of the peer instance. It may have one of the values specified in the class [PeerState](#PeerState)
+
+    # Arguments
+    server_address (str): URL of the Hyperpeer signaling server, it should include the protocol prefix *'ws://'* or *'wss//'* that specify the websocket protocol to use.
+    peer_type (str): Peer type. It can be used by other peers to know the role of the peer in the current application.
+    id (str): Peer unique identification string. Must be unique among all connected peers. If it's undefined or null, the server will assign a random string.
+    key (str): Peer validation string. It may be used by the server to verify the peer.
+    media_source (str): Path or URL of the video source.
+    media_sink (str): Path or filename to write with incoming video.
+    frame_generator (function): Generator function that produces video frames. It should use the `yield` statement to return frames.
+    frame_consumer (function): Function used to consume incoming video frames. It should have an argument called `frame`.
+    ssl_context (ssl.SSLContext): Oject used to manage SSL settings and certificates in the connection with the signaling server when using wss. See [ssl documentation](https://docs.python.org/3/library/ssl.html?highlight=ssl.sslcontext#ssl.SSLContext) for more details. 
+    datachannel_options (dict): Dictionary with the following keys: labal, maxPacketLifeTime, maxRetransmits, ordered, protocol. See the [documentation of the *RTCPeerConnection.createDataChannel*](https://developer.mozilla.org/en-US/docs/Web/API/RTCPeerConnection/createDataChannel#RTCDataChannelInit_dictionary) method of the WebRTC API for more details.
+
+    # Example
+    ```python
+    from hyperpeer import Peer, PeerState
+    import asyncio
+    import numpy
+
+    # Function used to generate video frames. It simply produce random images.
+    def video_frame_generator():
+        while True:
+            frame = numpy.random.rand(720, 1280, 3)
+            frame = numpy.uint8(frame * 100)
+            yield frame
+
+    # Frame counter
+    received_frames = 0
+
+    # Function used for consuming incoming video frames. It simply counts frames.
+    def video_frame_consumer(frame):
+        global received_frames
+        received_frames += 1
+
+    # Function used to consume incoming data. It simply print messages.
+    def on_data(data):
+        print('Remote message:')
+        print(data)
+
+    # Data channel settings. It sets the values for maximun throughout using UDP.
+    datachannel_options = {
+        'label': 'data_channel',
+        'maxPacketLifeTime': None,
+        'maxRetransmits': 0,
+        'ordered': False,
+        'protocol': ''
+    }
+
+    # Instanciate peer
+    peer = Peer('wss://localhost:8080', peer_type='media-server', id='server1', frame_generator=video_frame_generator, frame_consumer=video_frame_consumer, ssl_context=ssl_context, datachannel_options=datachannel_options)
+
+    # Coroutine used to produce and send data to remote peer. It simply send the value of the frame counter 10 times per second.
+    async def sender():
+        global peer
+        global received_frames
+        while peer.readyState == PeerState.CONNECTED:
+            data = { 'received_frames': received_frames }
+            await peer.send(data)
+            await asyncio.sleep(0.1)
+    
+    # Main loop
+    async def main():
+        # Open server connection
+        await peer.open()
+        # Add data handler
+        peer.add_data_handler(on_data)
+        # List connected peers
+        peers = await peer.get_peers()
+        print(peers) # [{'id': 'server1', 'type': 'media-server', 'busy': False}, ... ]
+        
+        try:
+            while True:
+                global received_frames
+                received_frames = 0
+                # Wait for incoming connections
+                remotePeerId = await peer.listen_connections()
+                # Accept incoming connection
+                await peer.accept_connection()
+                # Send data while connected
+                await sender()
+                # If still disconnecting wait to be online to start over again
+                while peer.readyState != PeerState.ONLINE:
+                    await asyncio.sleep(1)
+        except Exception as err:
+            print(err)
+            raise
+        finally:
+            # Close connection before leaving
+            await peer.close()
+
+    # Run main loop
+    asyncio.run(main())
+    ```
+    """
+    def __init__(self, serverAddress, peer_type='media-server', id=None, key=None, media_source=None, media_sink=None, frame_generator=None, frame_consumer=None, ssl_context=None, datachannel_options=None):
         self.url = serverAddress + '/' + peer_type
         if id:
            self.url += '/' + id
@@ -79,25 +201,41 @@ class Peer:
         self._handle_candidates_task = None
         self._data = None
         self._data_handlers = []
-        if frame_generator:
-            self._video_frame_track = FrameGeneratorTrack(frame_generator)
-        else:
-            self._video_frame_track = None
+        self._frame_generator = frame_generator
         if frame_consumer:
             self._frame_consumer_feeder = FrameConsumerFeeder(frame_consumer)
         else:
             self._frame_consumer_feeder = None
         self._track_consumer_task = None
+        self._ssl_context = ssl_context
+        self._remote_track_monitor_task = None
+        self._datachannel_options = datachannel_options
     
     def _set_readyState(self, new_state):
+        """
+        Change the value of `self.readyState`
+        """
         self.readyState = new_state
         logging.info('Peer (%s) state is %s', self.id, self.readyState)
     
     async def open(self):
-        self._ws = await websockets.connect(self.url)
+        """
+        (*Coroutine*) Open the connection with the Hyperpeer signaling server.
+
+        It returns when the Websocket connection with the signaling server is established.          
+        """
+        if self._ssl_context:
+            self._ws = await websockets.connect(self.url, ssl=self._ssl_context)
+        else:
+            self._ws = await websockets.connect(self.url)
         self._set_readyState(PeerState.ONLINE)
 
     async def close(self):
+        """
+        (*Coroutine*) Close the connection with the signaling server and with any remote peer.
+
+        It returns when both WebRTC peer connection and Websocket server connection are closed.
+        """
         if self.readyState == PeerState.CLOSED:
             return
         if self.readyState == PeerState.CONNECTING or self.readyState == PeerState.CONNECTED:
@@ -127,6 +265,15 @@ class Peer:
         await self._ws.send(json.dumps(data))
     
     async def get_peers(self):
+        """
+        (*Coroutine*) Returns the list of peers currently connected to the signaling server.
+
+        # Returns
+        list: List of peers currently connected to the signaling server. Each peer is represented by a dictionary with the following keys: id(`str`), type(`str`), busy(`bool`).
+
+        # Raises
+        Exception: If `peer.readyState` is not `PeerState.ONLINE`
+        """
         if self.readyState != PeerState.ONLINE:
             raise Exception('Not in ONLINE state!')
 
@@ -138,11 +285,24 @@ class Peer:
         return signal['peers']
     
     async def connect_to(self, remote_peer_id):
+        """
+        (*Coroutine*) Request a peer-to-peer connection with a remote peer.
+
+        # Arguments
+        remote_peer_id (str): id of the remote peer to connect to.
+        
+        # Raises
+        Exception: If `peer.readyState` is not `PeerState.ONLINE`
+        Exception: If a peer with id equal to *remote_peer_id* do not exist.
+        Exception: If remote peer is busy.
+        """
         if self.readyState != PeerState.ONLINE:
             raise Exception('Not in ONLINE state!')
         
         await self._send({'type': 'pair', 'remotePeerId': remote_peer_id})
         signal = await self._get_signal(timeout=2.0)
+        if signal['type'] == 'error':
+            raise Exception(signal['message'])
         if signal['type'] != 'status':
             raise Exception('Expected status from server', signal)
         if signal['status'] != 'paired':
@@ -151,6 +311,14 @@ class Peer:
         await self._negotiate(initiator=False)
 
     async def listen_connections(self):
+        """
+        (*Coroutine*) Wait for incoming connections. 
+        
+        It returns when a connection request is received setting `peer.readyState` as `PeerState.CONNECTING`
+
+        # Raises
+        Exception: If `peer.readyState` is not `PeerState.ONLINE`
+        """
         if self.readyState != PeerState.ONLINE:
             raise Exception('Not in ONLINE state!')
         self._set_readyState(PeerState.LISTENING)
@@ -160,18 +328,44 @@ class Peer:
         if signal['status'] != 'paired':
             raise Exception('Expected paired status!')
         self._set_readyState(PeerState.CONNECTING)
+        return signal['remotePeerId']
     
     async def accept_connection(self):
+        """
+        (*Coroutine*) Accept an incoming connection from a remote peer. You should call to the #Peer.listenConnections() method first.
+
+        # Raises
+        Exception: If `peer.readyState` is not `PeerState.CONNECTING`
+        """
         if self.readyState != PeerState.CONNECTING:
             raise Exception('Not in CONNECTING state!')
         await self._negotiate(initiator=True)
     
     async def send(self, data):
+        """
+        (*Coroutine*) Send a message to the connected remote peer using the established WebRTC data channel.
+
+        # Arguments
+        data (object): Data to send. It should be a string, number, list, or dictionary in order to be JSON serialized.
+
+        # Raises
+        Exception: If `peer.readyState` is not `PeerState.CONNECTED`
+        """
         if self.readyState != PeerState.CONNECTED:
             raise Exception('Not in CONNECTED state!')
-        self._datachannel.send(json.dumps(data))
+        if self._datachannel.readyState == 'open':
+            self._datachannel.send(json.dumps(data))
         
     async def recv(self):
+        """
+        (*Coroutine*) Wait until a message from the remote peer is received.
+
+        # Returns
+        object: Data received.
+
+        # Raises
+        Exception: If `peer.readyState` is not `PeerState.CONNECTED`
+        """
         if self.readyState != PeerState.CONNECTED:
             raise Exception('Not in CONNECTED state!')
         while self._data == None:
@@ -181,42 +375,74 @@ class Peer:
         return data
     
     def add_data_handler(self, handler):
+        """
+        Adds a function to the list of handlers to call whenever data is received.
+
+        # Arguments
+        handler (function): A function that will be called with the an argument called 'data'. 
+        """
         self._data_handlers.append(handler)
 
     def remove_data_handler(self, handler):
-        self._data_handlers.remove(handler)
+        """
+        Removes a function from the list of data handlers.
 
-    async def disconnect(self): 
+        # Arguments
+        handler (function): The function that will be removed.
+        """
+        self._data_handlers.remove(handler)
+    
+    async def _cancel_task(self, task):
+        if task.done():
+            error = task.exception()
+            if not error:
+                return
+            if not isinstance(error, asyncio.CancelledError):
+                logging.error("A task raised and exception: %s", str(error))
+            return
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            return
+
+    async def disconnect(self, error=None): 
+        """
+        (*Coroutine*) Terminate the WebRTC peer-to-peer connection with the remote peer.
+        """
         if self.readyState != PeerState.CONNECTING and self.readyState != PeerState.CONNECTED:
             return
         self._set_readyState(PeerState.DISCONNECTING)
+        logging.info('canceling tasks...')
         if self._track_consumer_task:
-            self._track_consumer_task.cancel()
-            try:
-                await self._track_consumer_task
-            except asyncio.CancelledError:
-                logging.info("_track_consumer_task is cancelled now")
+            await self._cancel_task(self._track_consumer_task)
         if self._handle_candidates_task:
-            self._handle_candidates_task.cancel()
-            try:
-                await self._handle_candidates_task
-            except asyncio.CancelledError:
-                logging.info("_handle_candidates_task is cancelled now")
+            await self._cancel_task(self._handle_candidates_task)
+        if self._remote_track_monitor_task:
+            await self._cancel_task(self._remote_track_monitor_task)
+        logging.info('closing peer connection...')
         await self._pc.close()
         if self._ws.open:
             self._set_readyState(PeerState.ONLINE)
         else:
             await self.close()
         logging.info('Disconected peer %s', self.id)
+        if error:
+            logging.error('Peer %s was disconnected because an error occurred: %s', self.id, str(error))
+            if isinstance(error, Exception):
+                await self.close()
+                raise error
 
     async def _handle_ice_candidates(self):
-        while True:
+        while self.readyState == PeerState.CONNECTING or self.readyState == PeerState.CONNECTED:
             signal = await self._get_signal()
-            if signal['type']:
+            if 'type' in signal:
                 if signal['type'] == 'status' and signal['status'] == 'unpaired':
-                    self.disconnect()
-            elif signal['candidate']:
-                logging.debug('Got ice candidate:')
+                    if self.readyState == PeerState.CONNECTED:
+                        logging.info('unpaired received, disconnecting...')
+                        await self.disconnect()
+            elif 'candidate' in signal:
+                logging.info('Got ice candidate:')
                 candi = Candidate.from_sdp(signal['candidate']['candidate'])
                 candidate = RTCIceCandidate(
                     component=candi.component,
@@ -231,9 +457,20 @@ class Peer:
                     type=candi.type,
                     sdpMLineIndex=signal['candidate']['sdpMLineIndex'],
                     sdpMid=signal['candidate']['sdpMid'])
+                logging.debug(candidate)
                 self._pc.addIceCandidate(candidate)
             else:
                 raise Exception('Received an unexpected signal: ', signal)
+
+    async def _remote_track_monitor(self):
+        while self.readyState == PeerState.CONNECTED:
+            if self._track_consumer_task.done():
+                error = self._track_consumer_task.exception()
+                if not isinstance(error, asyncio.CancelledError):
+                    logging.error('Track consumer error: ' + str(error))
+                    await self.disconnect(error)
+            await asyncio.sleep(0.1)
+
 
     async def _negotiate(self, initiator):
         self._pc = RTCPeerConnection()
@@ -253,6 +490,11 @@ class Peer:
                 if self.readyState == PeerState.CONNECTED:
                     logging.info('Datachannel lost, disconnecting...') 
                     await self.disconnect()
+            
+            @self._datachannel.on('error')
+            async def on_error(error):
+                logging.error('Datachannel error: ' + str(error))
+                await self.disconnect(error)
 
         @self._pc.on('track')
         def on_track(track):
@@ -288,12 +530,24 @@ class Peer:
                 self._pc.addTrack(self._player.audio)
             if self._player.video:
                 self._pc.addTrack(self._player.video)
-        elif self._video_frame_track:
-            self._pc.addTrack(self._video_frame_track)
+                logging.info('video player track added')
+        elif self._frame_generator:
+            self._pc.addTrack(FrameGeneratorTrack(self._frame_generator))
+            logging.info('video frame track added')
 
 
-        if initiator:   
-            self._datachannel = self._pc.createDataChannel('data_channel')
+        if initiator: 
+            do = self._datachannel_options
+            if not do:
+                do = {
+                    'label': 'data_channel',
+                    'maxPacketLifeTime': None,
+                    'maxRetransmits': None,
+                    'ordered': True,
+                    'protocol': ''
+                }
+            self._datachannel = self._pc.createDataChannel(do['label'], do['maxPacketLifeTime'], do['maxRetransmits'],
+                                                           do['ordered'])
             await self._pc.setLocalDescription(await self._pc.createOffer())
             signal = {
                 'sdp': self._pc.localDescription.sdp,
@@ -335,11 +589,15 @@ class Peer:
             }
             await self._send(answer)
             
-
+        logging.info('starting _handle_candidates_task...')
         self._handle_candidates_task = asyncio.create_task(self._handle_ice_candidates())
         while self.readyState == PeerState.CONNECTING:
             await asyncio.sleep(0.2)
-        return
+        
+        if self._track_consumer_task:
+            logging.info('starting _remote_track_monitor_task...')
+            self._remote_track_monitor_task = asyncio.create_task(
+                self._remote_track_monitor())
 
 
 

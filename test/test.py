@@ -194,18 +194,27 @@ class TestPeer(unittest.TestCase):
                 yield frame
 
         self.received_frames = []
-        async def video_frame_consumer(frame):
+        def frame_consumer(frame):
             self.received_frames.append(frame)
             #print('received frame: ' + str(len(self.received_frames)))
-            await self.peer.send({'credit': 2})
+            
 
         self.peer2 = Peer('ws://localhost:8080', peer_type='test',
                           id='server2', frame_generator=video_frame_generator)
         self.peer = Peer('ws://localhost:8080',
-                         peer_type='media-server', id='server1', frame_consumer=video_frame_consumer)
+                         peer_type='media-server', id='server1', frame_consumer=frame_consumer)
 
         await self.peer.open()
         await self.peer2.open()
+
+        self.sent = 0
+        async def sender():
+            frames = 0
+            while frames < 10:
+                frames = len(self.received_frames)
+                await self.peer.send({'credit': 1})
+                self.sent += 1
+                await asyncio.sleep(0.01)
 
         self.credits = 0
         def on_data(data):
@@ -221,16 +230,18 @@ class TestPeer(unittest.TestCase):
         peer1_task = asyncio.create_task(self.peer.connect_to('server2'))
         await asyncio.gather(peer1_task, peer2_task)
         print('connected!')
+        sender_task = asyncio.create_task(sender())
         async def wait_frames():
-            while len(self.received_frames) < 10:
+            while len(self.received_frames) < 15:
                 await asyncio.sleep(0.1)
         
         try:
             await asyncio.wait_for(wait_frames(), timeout=5.0)
-            self.assertTrue(len(self.received_frames) >= 10)
+            await sender_task
+            self.assertTrue(len(self.received_frames) >= 15)
             self.assertIsInstance(self.received_frames[0], numpy.ndarray)
             self.assertEqual(self.received_frames[0].shape, (720, 1280, 3))
-            self.assertTrue(self.credits >= 20)
+            self.assertTrue(self.credits == self.sent)
         except asyncio.TimeoutError:
             print('timeout!')
             raise

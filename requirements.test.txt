@@ -1,0 +1,7 @@
+aiohttp 
+aiortc 
+websockets
+pyee
+numpy
+opencv-python
+pydoc-markdown
