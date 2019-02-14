@@ -1,14 +1,13 @@
 # hyperpeer-py 
- hyperpeer-py is the python module for implementing media servers or backend peers in applications based on Hyperpeer. This module provides a class called [Peer](#Peer) which manages both the connection with the signaling server and the peer-to-peer communication via WebRTC with remote peers. It also provides an __Enum__ class called [PeerState](#PeerState) that defines the possible states of a [Peer](#Peer) instance. 
+hyperpeer-py is the python module for implementing media servers or backend peers in applications based on Hyperpeer. This module provides a class called [Peer](#Peer) which manages both the connection with the signaling server and the peer-to-peer communication via WebRTC with remote peers. It also provides an __Enum__ class called [PeerState](#PeerState) that defines the possible states of a [Peer](#Peer) instance. 
 
- # Features 
+# Features
 
  - Built on top of [**asyncio**](https://docs.python.org/3/library/asyncio.html?highlight=asyncio#module-asyncio), Python’s standard asynchronous I/O framework. 
  - Based on the popular modules [aiortc](https://aiortc.readthedocs.io/en/latest/). 
  and [websockets](https://websockets.readthedocs.io/en/stable/). 
- 
 
- # API Documentation 
+# API Documentation
 
 
 # Peer
@@ -21,8 +20,8 @@ It manages both the Websocket connection with the signaling server and the peer-
 
 __Attributes__
 
-- `id (string)`: id of the instance
-- `readyState (PeerState)`: State of the peer instance. It may have one of the values specified in the class [PeerState](#PeerState)
+- `id (string)`: id of the instance.
+- `readyState (PeerState)`: State of the peer instance. It may have one of the values specified in the class [PeerState](#PeerState).
 
 __Arguments__
 
@@ -35,7 +34,7 @@ __Arguments__
 - __frame_generator (function)__: Generator function that produces video frames. It should use the `yield` statement to return frames.
 - __frame_consumer (function)__: Function used to consume incoming video frames. It should have an argument called `frame`.
 - __ssl_context (ssl.SSLContext)__: Oject used to manage SSL settings and certificates in the connection with the signaling server when using wss. See [ssl documentation](https://docs.python.org/3/library/ssl.html?highlight=ssl.sslcontext#ssl.SSLContext) for more details.
-- __datachannel_options (dict)__: Dictionary with the following keys: labal, maxPacketLifeTime, maxRetransmits, ordered, protocol. See the [documentation of the *RTCPeerConnection.createDataChannel*](https://developer.mozilla.org/en-US/docs/Web/API/RTCPeerConnection/createDataChannel#RTCDataChannelInit_dictionary) method of the WebRTC API for more details.
+- __datachannel_options (dict)__: Dictionary with the following keys: *label*, *maxPacketLifeTime*, *maxRetransmits*, *ordered*, and *protocol*. See the [documentation of *RTCPeerConnection.createDataChannel()*](https://developer.mozilla.org/en-US/docs/Web/API/RTCPeerConnection/createDataChannel#RTCDataChannelInit_dictionary) method of the WebRTC API for more details.
 
 __Example__
 

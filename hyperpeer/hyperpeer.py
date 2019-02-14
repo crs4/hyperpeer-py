@@ -90,8 +90,8 @@ class Peer:
     It manages both the Websocket connection with the signaling server and the peer-to-peer communication via WebRTC with remote peers.
     
     # Attributes
-    id (string): id of the instance
-    readyState (PeerState): State of the peer instance. It may have one of the values specified in the class [PeerState](#PeerState)
+    id (string): id of the instance.
+    readyState (PeerState): State of the peer instance. It may have one of the values specified in the class [PeerState](#PeerState).
 
     # Arguments
     server_address (str): URL of the Hyperpeer signaling server, it should include the protocol prefix *'ws://'* or *'wss//'* that specify the websocket protocol to use.
@@ -103,7 +103,7 @@ class Peer:
     frame_generator (function): Generator function that produces video frames. It should use the `yield` statement to return frames.
     frame_consumer (function): Function used to consume incoming video frames. It should have an argument called `frame`.
     ssl_context (ssl.SSLContext): Oject used to manage SSL settings and certificates in the connection with the signaling server when using wss. See [ssl documentation](https://docs.python.org/3/library/ssl.html?highlight=ssl.sslcontext#ssl.SSLContext) for more details. 
-    datachannel_options (dict): Dictionary with the following keys: labal, maxPacketLifeTime, maxRetransmits, ordered, protocol. See the [documentation of the *RTCPeerConnection.createDataChannel*](https://developer.mozilla.org/en-US/docs/Web/API/RTCPeerConnection/createDataChannel#RTCDataChannelInit_dictionary) method of the WebRTC API for more details.
+    datachannel_options (dict): Dictionary with the following keys: *label*, *maxPacketLifeTime*, *maxRetransmits*, *ordered*, and *protocol*. See the [documentation of *RTCPeerConnection.createDataChannel()*](https://developer.mozilla.org/en-US/docs/Web/API/RTCPeerConnection/createDataChannel#RTCDataChannelInit_dictionary) method of the WebRTC API for more details.
 
     # Example
     ```python
