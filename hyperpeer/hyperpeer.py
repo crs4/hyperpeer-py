@@ -21,7 +21,7 @@ logging.basicConfig(level=logging.INFO)
 
 class PeerState(Enum):
     """
-    `Enum` class that represents the possible states of a Peer instance.
+    `Enum` class that represents the possible states of a [Peer](#peer) instance.
 
     # Attributes
     STARTING (enum): connecting to signaling server.
@@ -41,7 +41,6 @@ class PeerState(Enum):
     DISCONNECTING = auto()
     CLOSING = auto()
     CLOSED = auto()
-
 
 class FrameGeneratorTrack(VideoStreamTrack):
     def __init__(self, frame_generator):
@@ -91,17 +90,18 @@ class Peer:
     
     # Attributes
     id (string): id of the instance.
-    readyState (PeerState): State of the peer instance. It may have one of the values specified in the class [PeerState](#PeerState).
+    readyState (PeerState): State of the peer instance. It may have one of the values specified in the class [PeerState](#peerstate).
 
     # Arguments
-    server_address (str): URL of the Hyperpeer signaling server, it should include the protocol prefix *'ws://'* or *'wss//'* that specify the websocket protocol to use.
+    server_address (str): URL of the Hyperpeer signaling server, it should include the protocol prefix *ws://* or *wss://* that specify the websocket protocol to use.
     peer_type (str): Peer type. It can be used by other peers to know the role of the peer in the current application.
     id (str): Peer unique identification string. Must be unique among all connected peers. If it's undefined or null, the server will assign a random string.
     key (str): Peer validation string. It may be used by the server to verify the peer.
-    media_source (str): Path or URL of the video source.
+    media_source (str): Path or URL of the media source or file.
+    media_source_format (str): Specific format of the media source. Defaults to autodect.
     media_sink (str): Path or filename to write with incoming video.
-    frame_generator (function): Generator function that produces video frames. It should use the `yield` statement to return frames.
-    frame_consumer (function): Function used to consume incoming video frames. It should have an argument called `frame`.
+    frame_generator (function): Generator function that produces video frames as [NumPy arrays](https://docs.scipy.org/doc/numpy/reference/arrays.html) with [sRGB format](https://en.wikipedia.org/wiki/SRGB) with 24 bits per pixel (8 bits for each color). It should use the `yield` statement to generate arrays with elements of type `uint8` and with shape (vertical-resolution, horizontal-resolution, 3).
+    frame_consumer (function): Function used to consume incoming video frames as [NumPy arrays](https://docs.scipy.org/doc/numpy/reference/arrays.html) with [sRGB format](https://en.wikipedia.org/wiki/SRGB) with 24 bits per pixel (8 bits for each color). It should receive an argument called `frame` which will be a NumPy array with elements of type `uint8` and with shape (vertical-resolution, horizontal-resolution, 3).
     ssl_context (ssl.SSLContext): Oject used to manage SSL settings and certificates in the connection with the signaling server when using wss. See [ssl documentation](https://docs.python.org/3/library/ssl.html?highlight=ssl.sslcontext#ssl.SSLContext) for more details. 
     datachannel_options (dict): Dictionary with the following keys: *label*, *maxPacketLifeTime*, *maxRetransmits*, *ordered*, and *protocol*. See the [documentation of *RTCPeerConnection.createDataChannel()*](https://developer.mozilla.org/en-US/docs/Web/API/RTCPeerConnection/createDataChannel#RTCDataChannelInit_dictionary) method of the WebRTC API for more details.
 
@@ -186,7 +186,8 @@ class Peer:
     asyncio.run(main())
     ```
     """
-    def __init__(self, serverAddress, peer_type='media-server', id=None, key=None, media_source=None, media_sink=None, frame_generator=None, frame_consumer=None, ssl_context=None, datachannel_options=None):
+    def __init__(self, serverAddress, peer_type='media-server', id=None, key=None, media_source=None, media_sink=None, 
+                 frame_generator=None, frame_consumer=None, ssl_context=None, datachannel_options=None, media_source_format=None):
         self.url = serverAddress + '/' + peer_type
         if id:
            self.url += '/' + id
@@ -210,6 +211,11 @@ class Peer:
         self._ssl_context = ssl_context
         self._remote_track_monitor_task = None
         self._datachannel_options = datachannel_options
+        if media_source:
+            if media_source_format:
+                self._player = MediaPlayer(media_source, format=media_source_format)
+            else:
+                self._player = MediaPlayer(media_source)
     
     def _set_readyState(self, new_state):
         """
@@ -245,13 +251,18 @@ class Peer:
         self._set_readyState(PeerState.CLOSED)
 
     async def _get_signal(self, timeout=None):
-        if not self._ws.open:
-            await self.close()
-            raise Exception('Not connected!')
+        """
+        (*Coroutine*) Wait for a message from the signaling server.
+
+        # Returns
+        object: Signal received.
+        """
         try:
             message = await asyncio.wait_for(self._ws.recv(), timeout)
         except asyncio.TimeoutError:
             raise Exception('Server not responding!')
+        except websockets.exceptions.ConnectionClosed:
+            raise Exception('Websocket connection closed while waiting for a signal')
         try:
             signal = json.loads(message)
         except:
@@ -259,10 +270,13 @@ class Peer:
         return signal
     
     async def _send(self, data):
-        if not self._ws.open:
-            await self.close()
-            raise Exception('Not connected!')
-        await self._ws.send(json.dumps(data))
+        """
+        (*Coroutine*) Send a message to the signaling server.
+        """
+        try:
+            await self._ws.send(json.dumps(data))
+        except websockets.exceptions.ConnectionClosed:
+            raise Exception('Websocket connection closed while sending a signal')
     
     async def get_peers(self):
         """
@@ -332,7 +346,7 @@ class Peer:
     
     async def accept_connection(self):
         """
-        (*Coroutine*) Accept an incoming connection from a remote peer. You should call to the #Peer.listenConnections() method first.
+        (*Coroutine*) Accept an incoming connection from a remote peer. You should call to the #Peer.listen_connections method first.
 
         # Raises
         Exception: If `peer.readyState` is not `PeerState.CONNECTING`
@@ -393,6 +407,9 @@ class Peer:
         self._data_handlers.remove(handler)
     
     async def _cancel_task(self, task):
+        """
+        (*Coroutine*) Cancel a running task and wait until it's successfully cancelled.
+        """
         if task.done():
             error = task.exception()
             if not error:
@@ -434,6 +451,9 @@ class Peer:
                 raise error
 
     async def _handle_ice_candidates(self):
+        """
+        (*Coroutine*) Coroutine that handle the ICE candidates negotiation.
+        """
         while self.readyState == PeerState.CONNECTING or self.readyState == PeerState.CONNECTED:
             signal = await self._get_signal()
             if 'type' in signal:
@@ -463,6 +483,9 @@ class Peer:
                 raise Exception('Received an unexpected signal: ', signal)
 
     async def _remote_track_monitor(self):
+        """
+        (*Coroutine*) Coroutine that monitor the execution of the frame consumer.
+        """
         while self.readyState == PeerState.CONNECTED:
             if self._track_consumer_task.done():
                 error = self._track_consumer_task.exception()
@@ -473,8 +496,15 @@ class Peer:
 
 
     async def _negotiate(self, initiator):
+        """
+        (*Coroutine*) Handle the establishment of the WebRTC peer connection.
+        """
         self._pc = RTCPeerConnection()
+
         def add_datachannel_listeners():
+            """
+            Set the listeners to handle data channel events
+            """
             @self._datachannel.on('message')
             def on_message(message):
                 try:
@@ -498,7 +528,10 @@ class Peer:
 
         @self._pc.on('track')
         def on_track(track):
-            print('Track %s received' % track.kind)
+            """
+            Set the consumer or destination of the incomming video and audio tracks
+            """
+            logging.info('Track %s received' % track.kind)
 
             if track.kind == 'audio':
                 #webrtc_connection.addTrack(player.audio)
@@ -518,37 +551,37 @@ class Peer:
 
         @self._pc.on('iceconnectionstatechange')
         async def on_iceconnectionstatechange():
+            """
+            Monitor the ICE connection state
+            """
             logging.info('ICE connection state of peer (%s) is %s', self.id,
                   self._pc.iceConnectionState)  
             if self._pc.iceConnectionState == 'failed':
                 await self.disconnect()
             elif self._pc.iceConnectionState == 'completed':
                 self._set_readyState(PeerState.CONNECTED)
-
+        
+        # Add media tracks
         if self._player:
             if self._player.audio:
                 self._pc.addTrack(self._player.audio)
             if self._player.video:
                 self._pc.addTrack(self._player.video)
-                logging.info('video player track added')
+                logging.info('Video player track added')
         elif self._frame_generator:
             self._pc.addTrack(FrameGeneratorTrack(self._frame_generator))
-            logging.info('video frame track added')
-
+            logging.info('Video frame generator track added')
 
         if initiator: 
+            logging.info('Initiating peer connection...')
             do = self._datachannel_options
-            if not do:
-                do = {
-                    'label': 'data_channel',
-                    'maxPacketLifeTime': None,
-                    'maxRetransmits': None,
-                    'ordered': True,
-                    'protocol': ''
-                }
-            self._datachannel = self._pc.createDataChannel(do['label'], do['maxPacketLifeTime'], do['maxRetransmits'],
-                                                           do['ordered'])
+            if do:
+                self._datachannel = self._pc.createDataChannel(do['label'], do['maxPacketLifeTime'], do['maxRetransmits'],
+                                                           do['ordered'], do['protocol'])
+            else: 
+                self._datachannel = self._pc.createDataChannel('data_channel')
             await self._pc.setLocalDescription(await self._pc.createOffer())
+            
             signal = {
                 'sdp': self._pc.localDescription.sdp,
                 'type': self._pc.localDescription.type
@@ -568,6 +601,7 @@ class Peer:
                 add_datachannel_listeners()
                 pass#asyncio.ensure_future(send_pings())
         else: 
+            logging.info('Waiting for peer connection...')
             @self._pc.on('datachannel')
             async def on_datachannel(channel):
                 self._datachannel = channel

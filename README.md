@@ -1,18 +1,18 @@
 # hyperpeer-py 
-hyperpeer-py is the python module for implementing media servers or backend peers in applications based on Hyperpeer. This module provides a class called [Peer](#Peer) which manages both the connection with the signaling server and the peer-to-peer communication via WebRTC with remote peers. It also provides an __Enum__ class called [PeerState](#PeerState) that defines the possible states of a [Peer](#Peer) instance. 
+hyperpeer-py is the python module for implementing media servers or backend peers in applications based on Hyperpeer. This module provides a class called [Peer](#Peer) which manages both the connection with the signaling server and the peer-to-peer communication via WebRTC with remote peers. It also provides an __Enum__ class called [PeerState](#peerstate) that defines the possible states of a [Peer](#peer) instance. 
 
 # Features
 
  - Built on top of [**asyncio**](https://docs.python.org/3/library/asyncio.html?highlight=asyncio#module-asyncio), Python’s standard asynchronous I/O framework. 
- - Based on the popular modules [aiortc](https://aiortc.readthedocs.io/en/latest/). 
+ - Based on the popular modules [aiortc](https://aiortc.readthedocs.io/en/latest/) 
  and [websockets](https://websockets.readthedocs.io/en/stable/). 
 
-# API Documentation
+# API Reference
 
 
 # Peer
 ```python
-Peer(self, serverAddress, peer_type='media-server', id=None, key=None, media_source=None, media_sink=None, frame_generator=None, frame_consumer=None, ssl_context=None, datachannel_options=None)
+Peer(self, serverAddress, peer_type='media-server', id=None, key=None, media_source=None, media_sink=None, frame_generator=None, frame_consumer=None, ssl_context=None, datachannel_options=None, media_source_format=None)
 ```
 
 The Peer class represents the local peer in a WebRTC application based on Hyperpeer.
@@ -21,18 +21,19 @@ It manages both the Websocket connection with the signaling server and the peer-
 __Attributes__
 
 - `id (string)`: id of the instance.
-- `readyState (PeerState)`: State of the peer instance. It may have one of the values specified in the class [PeerState](#PeerState).
+- `readyState (PeerState)`: State of the peer instance. It may have one of the values specified in the class [PeerState](#peerstate).
 
 __Arguments__
 
-- __server_address (str)__: URL of the Hyperpeer signaling server, it should include the protocol prefix *'ws://'* or *'wss//'* that specify the websocket protocol to use.
+- __server_address (str)__: URL of the Hyperpeer signaling server, it should include the protocol prefix *ws://* or *wss://* that specify the websocket protocol to use.
 - __peer_type (str)__: Peer type. It can be used by other peers to know the role of the peer in the current application.
 - __id (str)__: Peer unique identification string. Must be unique among all connected peers. If it's undefined or null, the server will assign a random string.
 - __key (str)__: Peer validation string. It may be used by the server to verify the peer.
-- __media_source (str)__: Path or URL of the video source.
+- __media_source (str)__: Path or URL of the media source or file.
+- __media_source_format (str)__: Specific format of the media source. Defaults to autodect.
 - __media_sink (str)__: Path or filename to write with incoming video.
-- __frame_generator (function)__: Generator function that produces video frames. It should use the `yield` statement to return frames.
-- __frame_consumer (function)__: Function used to consume incoming video frames. It should have an argument called `frame`.
+- __frame_generator (function)__: Generator function that produces video frames as [NumPy arrays](https://docs.scipy.org/doc/numpy/reference/arrays.html) with [sRGB format](https://en.wikipedia.org/wiki/SRGB) with 24 bits per pixel (8 bits for each color). It should use the `yield` statement to generate arrays with elements of type `uint8` and with shape (vertical-resolution, horizontal-resolution, 3).
+- __frame_consumer (function)__: Function used to consume incoming video frames as [NumPy arrays](https://docs.scipy.org/doc/numpy/reference/arrays.html) with [sRGB format](https://en.wikipedia.org/wiki/SRGB) with 24 bits per pixel (8 bits for each color). It should receive an argument called `frame` which will be a NumPy array with elements of type `uint8` and with shape (vertical-resolution, horizontal-resolution, 3).
 - __ssl_context (ssl.SSLContext)__: Oject used to manage SSL settings and certificates in the connection with the signaling server when using wss. See [ssl documentation](https://docs.python.org/3/library/ssl.html?highlight=ssl.sslcontext#ssl.SSLContext) for more details.
 - __datachannel_options (dict)__: Dictionary with the following keys: *label*, *maxPacketLifeTime*, *maxRetransmits*, *ordered*, and *protocol*. See the [documentation of *RTCPeerConnection.createDataChannel()*](https://developer.mozilla.org/en-US/docs/Web/API/RTCPeerConnection/createDataChannel#RTCDataChannelInit_dictionary) method of the WebRTC API for more details.
 
@@ -186,7 +187,7 @@ __Raises__
 Peer.accept_connection(self)
 ```
 
-(*Coroutine*) Accept an incoming connection from a remote peer. You should call to the `Peer.listenConnections()` method first.
+(*Coroutine*) Accept an incoming connection from a remote peer. You should call to the `Peer.listen_connections` method first.
 
 __Raises__
 
@@ -256,7 +257,7 @@ Peer.disconnect(self, error=None)
 PeerState(self, /, *args, **kwargs)
 ```
 
-`Enum` class that represents the possible states of a Peer instance.
+`Enum` class that represents the possible states of a [Peer](#peer) instance.
 
 __Attributes__
 
