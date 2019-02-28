@@ -4,4 +4,3 @@ websockets
 pyee
 numpy
 opencv-python
-pydoc-markdown

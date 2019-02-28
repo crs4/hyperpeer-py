@@ -335,6 +335,7 @@ class Peer:
         """
         if self.readyState != PeerState.ONLINE:
             raise Exception('Not in ONLINE state!')
+        await self._send({'type': 'ready'})
         self._set_readyState(PeerState.LISTENING)
         signal = await self._get_signal()
         if signal['type'] != 'status':
