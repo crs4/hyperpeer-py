@@ -250,5 +250,49 @@ class TestPeer(unittest.TestCase):
             await self.peer2.disconnect()
             await self.peer.close()
             await self.peer2.close()
+
+    @async_test
+    async def test_video_player(self):
+
+        self.received_frames = []
+
+        def frame_consumer(frame):
+            self.received_frames.append(frame)
+            #print('received frame: ' + str(len(self.received_frames)))
+
+        self.peer2 = Peer('ws://localhost:8080',
+                          peer_type='media-player', id='player1', media_source='/test/video_test.mov', media_source_format='mp4')
+        self.peer = Peer('ws://localhost:8080',
+                         peer_type='media-client', id='client1', frame_consumer=frame_consumer)
+
+        await self.peer.open()
+        await self.peer2.open()
+
+        async def peer2_actions():
+            await self.peer2.listen_connections()
+            await self.peer2.accept_connection()
+        print('connecting...')
+        peer2_task = asyncio.create_task(peer2_actions())
+        peer1_task = asyncio.create_task(self.peer.connect_to('player1'))
+        await asyncio.gather(peer1_task, peer2_task)
+        print('connected!')
+
+        async def wait_frames():
+            while len(self.received_frames) < 10:
+                await asyncio.sleep(0.1)
+
+        try:
+            await asyncio.wait_for(wait_frames(), timeout=5.0)
+            self.assertTrue(len(self.received_frames) >= 10)
+        except asyncio.TimeoutError:
+            print('timeout!')
+            raise
+        finally:
+            await self.peer.disconnect()
+            await self.peer2.disconnect()
+            await self.peer.close()
+            await self.peer2.close()
         
         
+if __name__ == '__main__':
+    unittest.main()
