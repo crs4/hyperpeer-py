@@ -12,7 +12,7 @@ hyperpeer-py is the python module for implementing media servers or backend peer
 
 # Peer
 ```python
-Peer(self, serverAddress, peer_type='media-server', id=None, key=None, media_source=None, media_sink=None, frame_generator=None, frame_consumer=None, ssl_context=None, datachannel_options=None, media_source_format=None)
+Peer(self, serverAddress, peer_type='media-server', id=None, key=None, media_source=None, media_sink=None, frame_generator=None, frame_consumer=None, frame_rate=30, ssl_context=None, datachannel_options=None, media_source_format=None)
 ```
 
 The Peer class represents the local peer in a WebRTC application based on Hyperpeer.
@@ -32,8 +32,9 @@ __Arguments__
 - __media_source (str)__: Path or URL of the media source or file.
 - __media_source_format (str)__: Specific format of the media source. Defaults to autodect.
 - __media_sink (str)__: Path or filename to write with incoming video.
-- __frame_generator (function)__: Generator function that produces video frames as [NumPy arrays](https://docs.scipy.org/doc/numpy/reference/arrays.html) with [sRGB format](https://en.wikipedia.org/wiki/SRGB) with 24 bits per pixel (8 bits for each color). It should use the `yield` statement to generate arrays with elements of type `uint8` and with shape (vertical-resolution, horizontal-resolution, 3).
+- __frame_generator (generator function)__: Generator function that produces video frames as [NumPy arrays](https://docs.scipy.org/doc/numpy/reference/arrays.html) with [sRGB format](https://en.wikipedia.org/wiki/SRGB) with 24 bits per pixel (8 bits for each color). It should use the `yield` statement to generate arrays with elements of type `uint8` and with shape (vertical-resolution, horizontal-resolution, 3). Frame rate is automatically managed to match __frame_rate__.
 - __frame_consumer (function)__: Function used to consume incoming video frames as [NumPy arrays](https://docs.scipy.org/doc/numpy/reference/arrays.html) with [sRGB format](https://en.wikipedia.org/wiki/SRGB) with 24 bits per pixel (8 bits for each color). It should receive an argument called `frame` which will be a NumPy array with elements of type `uint8` and with shape (vertical-resolution, horizontal-resolution, 3).
+- __frame_rate (int)__: Streaming frame rate.
 - __ssl_context (ssl.SSLContext)__: Oject used to manage SSL settings and certificates in the connection with the signaling server when using wss. See [ssl documentation](https://docs.python.org/3/library/ssl.html?highlight=ssl.sslcontext#ssl.SSLContext) for more details.
 - __datachannel_options (dict)__: Dictionary with the following keys: *label*, *maxPacketLifeTime*, *maxRetransmits*, *ordered*, and *protocol*. See the [documentation of *RTCPeerConnection.createDataChannel()*](https://developer.mozilla.org/en-US/docs/Web/API/RTCPeerConnection/createDataChannel#RTCDataChannelInit_dictionary) method of the WebRTC API for more details.
 

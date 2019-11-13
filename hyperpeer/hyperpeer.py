@@ -6,7 +6,7 @@ Created on Mon Feb  11 16:00:00 2019
 
 """
 import asyncio
-from aiortc import RTCPeerConnection, RTCSessionDescription, VideoStreamTrack, RTCIceCandidate
+from aiortc import RTCPeerConnection, RTCSessionDescription, VideoStreamTrack, RTCIceCandidate, MediaStreamTrack
 from aiortc.contrib.media import MediaBlackhole, MediaPlayer, MediaRecorder
 from av import VideoFrame
 from aioice import Candidate
@@ -16,8 +16,7 @@ from enum import Enum, auto
 import inspect
 import time
 import logging
-
-logging.basicConfig(level=logging.INFO)
+import fractions
 
 class PeerState(Enum):
     """
@@ -42,7 +41,7 @@ class PeerState(Enum):
     CLOSING = auto()
     CLOSED = auto()
 
-class FrameGeneratorTrack(VideoStreamTrack):
+class FrameGeneratorTrack_old(VideoStreamTrack):
     def __init__(self, frame_generator):
         if not inspect.isgeneratorfunction(frame_generator):
             raise TypeError('frame_generator should be a generator function')
@@ -62,6 +61,38 @@ class FrameGeneratorTrack(VideoStreamTrack):
         video_frame.time_base = time_base
         #logging.debug(str(time.time()-self.last_time))
         self.last_time = time.time()
+        return video_frame
+
+class FrameGeneratorTrack(MediaStreamTrack):
+    kind = "video"
+
+    def __init__(self, frame_generator, frame_rate):
+        if not inspect.isgeneratorfunction(frame_generator):
+            raise TypeError('frame_generator should be a generator function')
+        super().__init__()  # don't forget this!
+        self.generator = frame_generator()
+        self.VIDEO_CLOCK_RATE = 90000
+        self.VIDEO_PTIME = 1 / frame_rate  # 30fps
+        self.VIDEO_TIME_BASE = fractions.Fraction(1, self.VIDEO_CLOCK_RATE)
+        self._start = time.time()
+        self._timestamp = 0
+
+    async def next_timestamp(self):
+        self._timestamp += int(self.VIDEO_PTIME * self.VIDEO_CLOCK_RATE)
+        wait = self._start + (self._timestamp / self.VIDEO_CLOCK_RATE) - time.time()
+        await asyncio.sleep(wait)
+        return self._timestamp, self.VIDEO_TIME_BASE 
+
+    async def recv(self):
+        try:
+            frame = next(self.generator)
+        except Exception as err:
+            logging.exception(err)
+            raise
+        video_frame = VideoFrame.from_ndarray(frame, format='bgr24')
+        pts, time_base = await self.next_timestamp()
+        video_frame.pts = pts
+        video_frame.time_base = time_base
         return video_frame
 
 
@@ -100,8 +131,9 @@ class Peer:
     media_source (str): Path or URL of the media source or file.
     media_source_format (str): Specific format of the media source. Defaults to autodect.
     media_sink (str): Path or filename to write with incoming video.
-    frame_generator (function): Generator function that produces video frames as [NumPy arrays](https://docs.scipy.org/doc/numpy/reference/arrays.html) with [sRGB format](https://en.wikipedia.org/wiki/SRGB) with 24 bits per pixel (8 bits for each color). It should use the `yield` statement to generate arrays with elements of type `uint8` and with shape (vertical-resolution, horizontal-resolution, 3).
+    frame_generator (generator function): Generator function that produces video frames as [NumPy arrays](https://docs.scipy.org/doc/numpy/reference/arrays.html) with [sRGB format](https://en.wikipedia.org/wiki/SRGB) with 24 bits per pixel (8 bits for each color). It should use the `yield` statement to generate arrays with elements of type `uint8` and with shape (vertical-resolution, horizontal-resolution, 3). 
     frame_consumer (function): Function used to consume incoming video frames as [NumPy arrays](https://docs.scipy.org/doc/numpy/reference/arrays.html) with [sRGB format](https://en.wikipedia.org/wiki/SRGB) with 24 bits per pixel (8 bits for each color). It should receive an argument called `frame` which will be a NumPy array with elements of type `uint8` and with shape (vertical-resolution, horizontal-resolution, 3).
+    frame_rate (int): Streaming frame rate
     ssl_context (ssl.SSLContext): Oject used to manage SSL settings and certificates in the connection with the signaling server when using wss. See [ssl documentation](https://docs.python.org/3/library/ssl.html?highlight=ssl.sslcontext#ssl.SSLContext) for more details. 
     datachannel_options (dict): Dictionary with the following keys: *label*, *maxPacketLifeTime*, *maxRetransmits*, *ordered*, and *protocol*. See the [documentation of *RTCPeerConnection.createDataChannel()*](https://developer.mozilla.org/en-US/docs/Web/API/RTCPeerConnection/createDataChannel#RTCDataChannelInit_dictionary) method of the WebRTC API for more details.
 
@@ -187,7 +219,7 @@ class Peer:
     ```
     """
     def __init__(self, serverAddress, peer_type='media-server', id=None, key=None, media_source=None, media_sink=None, 
-                 frame_generator=None, frame_consumer=None, ssl_context=None, datachannel_options=None, media_source_format=None):
+                 frame_generator=None, frame_consumer=None, frame_rate=30, ssl_context=None, datachannel_options=None, media_source_format=None):
         self.url = serverAddress + '/' + peer_type
         if id:
            self.url += '/' + id
@@ -202,6 +234,7 @@ class Peer:
         self._data = None
         self._data_handlers = []
         self._frame_generator = frame_generator
+        self._frame_rate = frame_rate
         if frame_consumer:
             self._frame_consumer_feeder = FrameConsumerFeeder(frame_consumer)
         else:
@@ -584,8 +617,11 @@ class Peer:
                 self._pc.addTrack(player.video)
                 logging.info('Video player track added')
         elif self._frame_generator:
-            self._pc.addTrack(FrameGeneratorTrack(self._frame_generator))
-            logging.info('Video frame generator track added')
+            if inspect.isgeneratorfunction(self._frame_generator):
+                self._pc.addTrack(FrameGeneratorTrack(self._frame_generator, frame_rate=self._frame_rate))
+                logging.info('Video frame generator track added')
+            else:
+                logging.info('No video track to add')
 
         if initiator: 
             logging.info('Initiating peer connection...')
