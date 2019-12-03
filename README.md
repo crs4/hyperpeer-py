@@ -45,40 +45,49 @@ from hyperpeer import Peer, PeerState
 import asyncio
 import numpy
 
-# Function used to generate video frames. It simply produce random images.
+# Frame counter
+received_frames = 0
+
+def video_frame_consumer(frame):
+    """ Function used for consuming incoming video frames. It simply counts frames
+    
+    Arguments:
+        frame {ndarray} -- Video frame as a NumPy array with sRGB format, elements of type `uint8` and with shape (vertical-resolution, horizontal-resolution, 3)
+    """    
+    global received_frames
+    received_frames += 1
+
 def video_frame_generator():
+    """ Generator Function used to generate video frames. It simply produce random images.
+    
+    Yields:
+        ndarray -- It should be a NumPy array with sRGB format, elements of type `uint8` and with shape (vertical-resolution, horizontal-resolution, 3)
+    """    
     while True:
         frame = numpy.random.rand(720, 1280, 3)
         frame = numpy.uint8(frame * 100)
         yield frame
 
-# Frame counter
-received_frames = 0
-
-# Function used for consuming incoming video frames. It simply counts frames.
-def video_frame_consumer(frame):
-    global received_frames
-    received_frames += 1
-
-# Function used to consume incoming data. It simply print messages.
 def on_data(data):
+    """ Function used to consume incoming data. It simply print messages.
+    
+    Arguments:
+        data {*} -- Incoming message. It can be any JSON serializable object.
+    """    
     print('Remote message:')
     print(data)
 
-# Data channel settings. It sets the values for maximun throughout using UDP.
-datachannel_options = {
-    'label': 'data_channel',
-    'maxPacketLifeTime': None,
-    'maxRetransmits': 0,
-    'ordered': False,
-    'protocol': ''
-}
+# Instantiate peer
+peer = Peer(
+    server_address='ws://localhost:8080', 
+    peer_type='my-worker', 
+    id='worker1', 
+    frame_consumer=video_frame_consumer,
+    frame_generator=video_frame_generator)
 
-# Instanciate peer
-peer = Peer('wss://localhost:8080', peer_type='media-server', id='server1', frame_generator=video_frame_generator, frame_consumer=video_frame_consumer, ssl_context=ssl_context, datachannel_options=datachannel_options)
-
-# Coroutine used to produce and send data to remote peer. It simply send the value of the frame counter 10 times per second.
 async def sender():
+    """ Coroutine used to produce and send data to remote peer. It simply send the value of the frame counter 10 times per second.
+    """    
     global peer
     global received_frames
     while peer.readyState == PeerState.CONNECTED:
@@ -86,15 +95,11 @@ async def sender():
         await peer.send(data)
         await asyncio.sleep(0.1)
 
-# Main loop
 async def main():
+    """ Main loop
+    """    
     # Open server connection
     await peer.open()
-    # Add data handler
-    peer.add_data_handler(on_data)
-    # List connected peers
-    peers = await peer.get_peers()
-    print(peers) # [{'id': 'server1', 'type': 'media-server', 'busy': False}, ... ]
 
     try:
         while True:
@@ -113,7 +118,7 @@ async def main():
         print(err)
         raise
     finally:
-        # Close connection before leaving
+        # Close server connection before leaving
         await peer.close()
 
 # Run main loop
