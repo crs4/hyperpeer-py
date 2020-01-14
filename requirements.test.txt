@@ -1,6 +1,3 @@
-aiohttp 
-aiortc
-websockets
-pyee
 numpy
 opencv-python
+/hp-py

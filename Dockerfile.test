@@ -1,5 +1,6 @@
 # Use an official Python runtime as a parent image
-FROM nikolaik/python-nodejs:latest
+FROM nikolaik/python-nodejs:python3.7-nodejs10 
+#latest
 
 RUN apt-get update 
 RUN apt-get install libavdevice-dev libavfilter-dev libopus-dev libvpx-dev pkg-config -y
@@ -10,7 +11,7 @@ RUN apt-get install gcc -y
 #WORKDIR /
 
 # Copy the current directory contents into the container at /hyperpeer
-ADD ./hyperpeer /hyperpeer
+ADD ./ /hp-py
 ADD ./test /test
 COPY requirements.test.txt  hp-requirements.txt
 

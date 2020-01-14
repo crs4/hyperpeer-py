@@ -253,7 +253,8 @@ class Peer:
                     logging.exception('Media source error: ' + str(av_error))
                     raise
         self._media_source = media_source
-        self._media_source_format = media_source_format        
+        self._media_source_format = media_source_format   
+        self._player = None     
     
     def _set_readyState(self, new_state):
         """
@@ -472,6 +473,8 @@ class Peer:
         """
         if self.readyState != PeerState.CONNECTING and self.readyState != PeerState.CONNECTED:
             return
+        
+
         self._set_readyState(PeerState.DISCONNECTING)
         logging.info('canceling tasks...')
         if self._track_consumer_task:
@@ -607,14 +610,14 @@ class Peer:
         # Add media tracks
         if self._media_source:
             if self._media_source_format:
-                player = MediaPlayer(
+                self._player = MediaPlayer(
                     self._media_source, format=self._media_source_format)
             else:
-                player = MediaPlayer(self._media_source)
-            if player.audio:
-                self._pc.addTrack(player.audio)
-            if player.video:
-                self._pc.addTrack(player.video)
+                self._player = MediaPlayer(self._media_source)
+            if self._player.audio:
+                self._pc.addTrack(self._player.audio)
+            if self._player.video:
+                self._pc.addTrack(self._player.video)
                 logging.info('Video player track added')
         elif self._frame_generator:
             if inspect.isgeneratorfunction(self._frame_generator):
