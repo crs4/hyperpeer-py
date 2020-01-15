@@ -1,6 +1,6 @@
 import unittest
 import asyncio
-from hyperpeer.hyperpeer import Peer, PeerState
+from hyperpeer import Peer, PeerState
 import subprocess
 import sys
 import numpy
