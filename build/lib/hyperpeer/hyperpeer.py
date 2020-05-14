@@ -547,19 +547,22 @@ class Peer:
         """
         self._pc = RTCPeerConnection()
 
-        def add_datachannel_listeners():
+        async def add_datachannel_listeners():
             """
             Set the listeners to handle data channel events
             """
             @self._datachannel.on('message')
-            def on_message(message):
+            async def on_message(message):
                 try:
                     data = json.loads(message)
                 except:
                     raise TypeError('Received an invalid json message data')
                 self._data = data
                 for handler in self._data_handlers:
-                    handler(data)
+                    if inspect.iscoroutinefunction(handler):
+                        await handler(data)
+                    else:
+                        handler(data)
 
             @self._datachannel.on('close')
             async def on_close():
@@ -650,9 +653,9 @@ class Peer:
             await self._pc.setRemoteDescription(answer)
 
             @self._datachannel.on('open')
-            def on_open():
+            async def on_open():
                 self._set_readyState(PeerState.CONNECTED)
-                add_datachannel_listeners()
+                await add_datachannel_listeners()
                 pass#asyncio.ensure_future(send_pings())
         else: 
             logging.info('Waiting for peer connection...')
@@ -660,7 +663,7 @@ class Peer:
             async def on_datachannel(channel):
                 self._datachannel = channel
                 self._set_readyState(PeerState.CONNECTED)
-                add_datachannel_listeners()
+                await add_datachannel_listeners()
 
             signal = await self._get_signal()
             if signal['type'] != 'offer':

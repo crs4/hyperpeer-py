@@ -173,10 +173,16 @@ class TestPeer(unittest.TestCase):
             def on_data(data):
                 self.count += data['inc']
 
+            self.count2 = 0
+            async def on_data_async(data):
+                self.count2 += data['inc']
+
             self.peer2.add_data_handler(on_data)
+            self.peer2.add_data_handler(on_data_async)
             await asyncio.wait_for(sender(), timeout=1)
             await asyncio.sleep(0.2)
             self.assertEqual(self.count, 10)
+            self.assertEqual(self.count2, 10)
         except Exception as err:
             print(err)
             raise
