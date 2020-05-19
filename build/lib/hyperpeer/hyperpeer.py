@@ -6,7 +6,7 @@ Created on Mon Feb  11 16:00:00 2019
 
 """
 import asyncio
-from aiortc import RTCPeerConnection, RTCSessionDescription, VideoStreamTrack, RTCIceCandidate, MediaStreamTrack
+from aiortc import RTCPeerConnection, RTCSessionDescription, VideoStreamTrack, RTCIceCandidate, MediaStreamTrack, RTCIceGatherer, RTCIceServer, RTCConfiguration  
 from aiortc.contrib.media import MediaBlackhole, MediaPlayer, MediaRecorder
 from av import VideoFrame
 from aioice import Candidate
@@ -545,7 +545,9 @@ class Peer:
         """
         (*Coroutine*) Handle the establishment of the WebRTC peer connection.
         """
-        self._pc = RTCPeerConnection()
+        ice_servers = [RTCIceServer('stun:stun.l.google.com:19302'), RTCIceServer('stun:stun2.l.google.com:19302'), RTCIceServer('stun:stunserver.org:3478')]
+        
+        self._pc = RTCPeerConnection(RTCConfiguration(ice_servers))
 
         async def add_datachannel_listeners():
             """
@@ -680,8 +682,40 @@ class Peer:
             }
             await self._send(answer)
             
+        
+        
         logging.info('starting _handle_candidates_task...')
         self._handle_candidates_task = asyncio.create_task(self._handle_ice_candidates())
+        logging.info('sending local ice candidates...')
+        
+        # ice_servers = RTCIceGatherer.getDefaultIceServers()
+        print('ice_servers')
+        print(ice_servers)
+        ice_gatherer = RTCIceGatherer(ice_servers)
+        local_candidates = ice_gatherer.getLocalCandidates()      
+        print('local_candidates')  
+        print(local_candidates)  
+        for candidate in local_candidates:
+            sdp = (
+                f"{candidate.foundation} {candidate.component} {candidate.protocol} "
+                f"{candidate.priority} {candidate.ip} {candidate.port} typ {candidate.type}"
+            )
+
+            if candidate.relatedAddress is not None:
+                sdp += f" raddr {candidate.relatedAddress}"
+            if candidate.relatedPort is not None:
+                sdp += f" rport {candidate.relatedPort}"
+            if candidate.tcpType is not None:
+                sdp += f" tcptype {candidate.tcpType}"
+            message = {
+                "candidate": "candidate:" + sdp,
+                "id": candidate.sdpMid,
+                "label": candidate.sdpMLineIndex,
+                "type": "candidate",
+            }
+            logging.info(message)
+            await self._send(message)
+
         while self.readyState == PeerState.CONNECTING:
             await asyncio.sleep(0.2)
         
