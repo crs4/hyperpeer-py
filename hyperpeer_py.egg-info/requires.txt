@@ -1,2 +1,2 @@
-aiortc==0.9.22
+aiortc==0.9.28
 websockets

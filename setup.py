@@ -13,7 +13,7 @@ setuptools.setup(
     long_description_content_type="text/markdown",
     url="https://github.com/crs4/hyperpeer-py",
     packages=setuptools.find_packages(),
-    install_requires=['aiortc==0.9.22', 'websockets'],
+    install_requires=['aiortc==0.9.28', 'websockets'],
     classifiers=[
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: GPL-3.0 License",
