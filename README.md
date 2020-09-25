@@ -22,6 +22,7 @@ __Attributes__
 
 - `id (string)`: id of the instance.
 - `readyState (PeerState)`: State of the peer instance. It may have one of the values specified in the class [PeerState](#peerstate).
+- `disconnection_event (asyncio.Event)`: Notify that the current peer connection is closing
 
 __Arguments__
 
@@ -32,9 +33,9 @@ __Arguments__
 - __media_source (str)__: Path or URL of the media source or file.
 - __media_source_format (str)__: Specific format of the media source. Defaults to autodect.
 - __media_sink (str)__: Path or filename to write with incoming video.
-- __frame_generator (generator function)__: Generator function that produces video frames as [NumPy arrays](https://docs.scipy.org/doc/numpy/reference/arrays.html) with [sRGB format](https://en.wikipedia.org/wiki/SRGB) with 24 bits per pixel (8 bits for each color). It should use the `yield` statement to generate arrays with elements of type `uint8` and with shape (vertical-resolution, horizontal-resolution, 3). Frame rate is automatically managed to match __frame_rate__.
+- __frame_generator (generator function)__: Generator function that produces video frames as [NumPy arrays](https://docs.scipy.org/doc/numpy/reference/arrays.html) with [sRGB format](https://en.wikipedia.org/wiki/SRGB) with 24 bits per pixel (8 bits for each color). It should use the `yield` statement to generate arrays with elements of type `uint8` and with shape (vertical-resolution, horizontal-resolution, 3).
 - __frame_consumer (function)__: Function used to consume incoming video frames as [NumPy arrays](https://docs.scipy.org/doc/numpy/reference/arrays.html) with [sRGB format](https://en.wikipedia.org/wiki/SRGB) with 24 bits per pixel (8 bits for each color). It should receive an argument called `frame` which will be a NumPy array with elements of type `uint8` and with shape (vertical-resolution, horizontal-resolution, 3).
-- __frame_rate (int)__: Streaming frame rate.
+- __frame_rate (int)__: Streaming frame rate
 - __ssl_context (ssl.SSLContext)__: Oject used to manage SSL settings and certificates in the connection with the signaling server when using wss. See [ssl documentation](https://docs.python.org/3/library/ssl.html?highlight=ssl.sslcontext#ssl.SSLContext) for more details.
 - __datachannel_options (dict)__: Dictionary with the following keys: *label*, *maxPacketLifeTime*, *maxRetransmits*, *ordered*, and *protocol*. See the [documentation of *RTCPeerConnection.createDataChannel()*](https://developer.mozilla.org/en-US/docs/Web/API/RTCPeerConnection/createDataChannel#RTCDataChannelInit_dictionary) method of the WebRTC API for more details.
 
@@ -45,49 +46,40 @@ from hyperpeer import Peer, PeerState
 import asyncio
 import numpy
 
-# Frame counter
-received_frames = 0
-
-def video_frame_consumer(frame):
-    """ Function used for consuming incoming video frames. It simply counts frames
-    
-    Arguments:
-        frame {ndarray} -- Video frame as a NumPy array with sRGB format, elements of type `uint8` and with shape (vertical-resolution, horizontal-resolution, 3)
-    """    
-    global received_frames
-    received_frames += 1
-
+# Function used to generate video frames. It simply produce random images.
 def video_frame_generator():
-    """ Generator Function used to generate video frames. It simply produce random images.
-    
-    Yields:
-        ndarray -- It should be a NumPy array with sRGB format, elements of type `uint8` and with shape (vertical-resolution, horizontal-resolution, 3)
-    """    
     while True:
         frame = numpy.random.rand(720, 1280, 3)
         frame = numpy.uint8(frame * 100)
         yield frame
 
+# Frame counter
+received_frames = 0
+
+# Function used for consuming incoming video frames. It simply counts frames.
+def video_frame_consumer(frame):
+    global received_frames
+    received_frames += 1
+
+# Function used to consume incoming data. It simply print messages.
 def on_data(data):
-    """ Function used to consume incoming data. It simply print messages.
-    
-    Arguments:
-        data {*} -- Incoming message. It can be any JSON serializable object.
-    """    
     print('Remote message:')
     print(data)
 
-# Instantiate peer
-peer = Peer(
-    server_address='ws://localhost:8080', 
-    peer_type='my-worker', 
-    id='worker1', 
-    frame_consumer=video_frame_consumer,
-    frame_generator=video_frame_generator)
+# Data channel settings. It sets the values for maximun throughout using UDP.
+datachannel_options = {
+    'label': 'data_channel',
+    'maxPacketLifeTime': None,
+    'maxRetransmits': 0,
+    'ordered': False,
+    'protocol': ''
+}
 
+# Instanciate peer
+peer = Peer('wss://localhost:8080', peer_type='media-server', id='server1', frame_generator=video_frame_generator, frame_consumer=video_frame_consumer, ssl_context=ssl_context, datachannel_options=datachannel_options)
+
+# Coroutine used to produce and send data to remote peer. It simply send the value of the frame counter 10 times per second.
 async def sender():
-    """ Coroutine used to produce and send data to remote peer. It simply send the value of the frame counter 10 times per second.
-    """    
     global peer
     global received_frames
     while peer.readyState == PeerState.CONNECTED:
@@ -95,11 +87,15 @@ async def sender():
         await peer.send(data)
         await asyncio.sleep(0.1)
 
+# Main loop
 async def main():
-    """ Main loop
-    """    
     # Open server connection
     await peer.open()
+    # Add data handler
+    peer.add_data_handler(on_data)
+    # List connected peers
+    peers = await peer.get_peers()
+    print(peers) # [{'id': 'server1', 'type': 'media-server', 'busy': False}, ... ]
 
     try:
         while True:
@@ -118,7 +114,7 @@ async def main():
         print(err)
         raise
     finally:
-        # Close server connection before leaving
+        # Close connection before leaving
         await peer.close()
 
 # Run main loop

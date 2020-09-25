@@ -122,6 +122,7 @@ class Peer:
     # Attributes
     id (string): id of the instance.
     readyState (PeerState): State of the peer instance. It may have one of the values specified in the class [PeerState](#peerstate).
+    disconnection_event (asyncio.Event): Notify that the current peer connection is closing
 
     # Arguments
     server_address (str): URL of the Hyperpeer signaling server, it should include the protocol prefix *ws://* or *wss://* that specify the websocket protocol to use.
@@ -229,6 +230,7 @@ class Peer:
         self._ws = None
         self._pc = None
         self.readyState = PeerState.STARTING
+        self.disconnection_event = asyncio.Event()
         self._datachannel =  None
         self._handle_candidates_task = None
         self._data = None
@@ -242,6 +244,7 @@ class Peer:
         self._track_consumer_task = None
         self._ssl_context = ssl_context
         self._remote_track_monitor_task = None
+        self._connection_monitor_task = None
         self._datachannel_options = datachannel_options
         if media_source != None:
             if media_source == '':
@@ -474,7 +477,8 @@ class Peer:
         if self.readyState != PeerState.CONNECTING and self.readyState != PeerState.CONNECTED:
             return
         
-
+        if not self.disconnection_event.is_set():
+            self.disconnection_event.set()
         self._set_readyState(PeerState.DISCONNECTING)
         logging.info('canceling tasks...')
         if self._track_consumer_task:
@@ -483,6 +487,8 @@ class Peer:
             await self._cancel_task(self._handle_candidates_task)
         if self._remote_track_monitor_task:
             await self._cancel_task(self._remote_track_monitor_task)
+        if not self._connection_monitor_task.done():
+            await self._cancel_task(self._connection_monitor_task)
         logging.info('closing peer connection...')
         await self._pc.close()
         if self._ws.open:
@@ -506,7 +512,7 @@ class Peer:
                 if signal['type'] == 'status' and signal['status'] == 'unpaired':
                     if self.readyState == PeerState.CONNECTED:
                         logging.info('unpaired received, disconnecting...')
-                        await self.disconnect()
+                        self.disconnection_event.set()
             elif 'candidate' in signal:
                 logging.info('Got ice candidate:')
                 candi = Candidate.from_sdp(signal['candidate']['candidate'])
@@ -537,9 +543,16 @@ class Peer:
                 error = self._track_consumer_task.exception()
                 if not isinstance(error, asyncio.CancelledError):
                     logging.error('Track consumer error: ' + str(error))
-                    await self.disconnect(error)
+                    self.disconnection_event.set()
             await asyncio.sleep(0.1)
 
+    async def _connection_monitor(self):
+        """
+        (*Coroutine*) Coroutine that monitor the disconnection event.
+        """
+        await self.disconnection_event.wait()
+        await self.disconnect('connection lost!')
+        self.disconnection_event.clear()
 
     async def _negotiate(self, initiator):
         """
@@ -570,12 +583,12 @@ class Peer:
             async def on_close():
                 if self.readyState == PeerState.CONNECTED:
                     logging.info('Datachannel lost, disconnecting...') 
-                    await self.disconnect()
+                    self.disconnection_event.set()
             
             @self._datachannel.on('error')
             async def on_error(error):
                 logging.error('Datachannel error: ' + str(error))
-                await self.disconnect(error)
+                self.disconnection_event.set()
 
         @self._pc.on('track')
         def on_track(track):
@@ -597,7 +610,10 @@ class Peer:
 
             @track.on('ended')
             async def on_ended():
-                logging.info('Track %s ended' % track.kind)
+                logging.info('Remote track %s ended' % track.kind)
+                if self.readyState == PeerState.CONNECTED:
+                    logging.info('Remote media track ended, disconnecting...') 
+                    self.disconnection_event.set()
                 #await recorder.stop()
 
         @self._pc.on('iceconnectionstatechange')
@@ -608,9 +624,10 @@ class Peer:
             logging.info('ICE connection state of peer (%s) is %s', self.id,
                   self._pc.iceConnectionState)  
             if self._pc.iceConnectionState == 'failed':
-                await self.disconnect()
+                self.disconnection_event.set()
             elif self._pc.iceConnectionState == 'completed':
-                self._set_readyState(PeerState.CONNECTED)
+                # self._set_readyState(PeerState.CONNECTED)
+                pass
         
         # Add media tracks
         if self._media_source:
@@ -623,6 +640,12 @@ class Peer:
                 self._pc.addTrack(self._player.audio)
             if self._player.video:
                 self._pc.addTrack(self._player.video)
+                @self._player.video.on('ended')
+                async def on_ended():
+                    logging.info('Local track %s ended' % self._player.video.kind)
+                    if self.readyState == PeerState.CONNECTED:
+                        logging.info('disconnecting...') 
+                        self.disconnection_event.set()
                 logging.info('Video player track added')
         elif self._frame_generator:
             if inspect.isgeneratorfunction(self._frame_generator):
@@ -689,12 +712,10 @@ class Peer:
         logging.info('sending local ice candidates...')
         
         # ice_servers = RTCIceGatherer.getDefaultIceServers()
-        print('ice_servers')
-        print(ice_servers)
+        logging.debug(f'ice_servers: {ice_servers}')
         ice_gatherer = RTCIceGatherer(ice_servers)
         local_candidates = ice_gatherer.getLocalCandidates()      
-        print('local_candidates')  
-        print(local_candidates)  
+        logging.debug(f'local_candidates: {local_candidates}')
         for candidate in local_candidates:
             sdp = (
                 f"{candidate.foundation} {candidate.component} {candidate.protocol} "
@@ -723,6 +744,8 @@ class Peer:
             logging.info('starting _remote_track_monitor_task...')
             self._remote_track_monitor_task = asyncio.create_task(
                 self._remote_track_monitor())
+        
+        self._connection_monitor_task = asyncio.create_task(self._connection_monitor())
 
 
 

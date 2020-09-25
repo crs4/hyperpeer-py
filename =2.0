@@ -1,0 +1,4 @@
+Collecting pydoc-markdown
+  Downloading https://files.pythonhosted.org/packages/81/6a/958cb78d873aa586586ad50331b05ee34df3dd6f055f67ed5cdd3824eb8d/pydoc_markdown-3.5.0-py3-none-any.whl (61kB)
+Collecting docspec-python<0.1.0,>=0.0.7
+  Downloading https://files.pythonhosted.org/packages/dc/43/edc53651b32cf8ed942183a1709a4be7edb19aef08d4ce3cdc7014e3fe05/docspec_python-0.0.7-py3-none-any.whl

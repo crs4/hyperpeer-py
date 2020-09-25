@@ -15,6 +15,7 @@ def async_test(f):
         coro = asyncio.coroutine(f)
         future = coro(*args, **kwargs)
         loop = asyncio.get_event_loop()
+        loop.set_debug(True)
         loop.run_until_complete(future)
     return wrapper
 
@@ -59,7 +60,7 @@ class TestPeer(unittest.TestCase):
         asyncio.get_event_loop().run_until_complete(clean())
         #self.peer.close()
 
-    #@unittest.skip("demonstrating skipping")
+    @unittest.skip("demonstrating skipping")
     @async_test
     async def test_server_connection(self):
         self.assertEqual(self.peer.readyState, PeerState.STARTING)
@@ -68,14 +69,14 @@ class TestPeer(unittest.TestCase):
         await self.peer.close()
         self.assertEqual(self.peer.readyState, PeerState.CLOSED)
 
-    #@unittest.skip("demonstrating skipping")
+    @unittest.skip("demonstrating skipping")
     @async_test
     async def test_peers(self):
         await self.peer.open()
         peers = await self.peer.get_peers()
         self.assertIsInstance(peers, list)
 
-    #@unittest.skip("demonstrating skipping")
+    @unittest.skip("demonstrating skipping")
     @async_test
     async def test_connect(self):
         await self.peer.open()
@@ -109,7 +110,7 @@ class TestPeer(unittest.TestCase):
         self.assertEqual(self.peer.readyState, PeerState.ONLINE)
         await self.peer2.disconnect()
 
-    #@unittest.skip("demonstrating skipping")
+    @unittest.skip("demonstrating skipping")
     @async_test
     async def test_datachannel_poll(self):
         await self.peer.open()
@@ -143,7 +144,7 @@ class TestPeer(unittest.TestCase):
             await self.peer.close()
             await self.peer2.close()
 
-    #@unittest.skip("demonstrating skipping")
+    @unittest.skip("demonstrating skipping")
     @async_test
     async def test_datachannel_stream(self):
         await self.peer.open()
@@ -183,6 +184,7 @@ class TestPeer(unittest.TestCase):
             await asyncio.sleep(0.2)
             self.assertEqual(self.count, 10)
             self.assertEqual(self.count2, 10)
+            print('Data test OK')
         except Exception as err:
             print(err)
             raise
@@ -192,7 +194,7 @@ class TestPeer(unittest.TestCase):
             await self.peer.close()
             await self.peer2.close()
 
-    #@unittest.skip("demonstrating skipping")
+    # @unittest.skip("demonstrating skipping")
     @async_test
     async def test_video_and_data(self):
         
@@ -279,10 +281,12 @@ class TestPeer(unittest.TestCase):
         self.start_time = 0
         def frame_consumer(frame):
             if len(self.received_frames) == 0:
+                print('timer start')
                 self.start_time = time.time()
             self.received_frames.append(frame)
             if len(self.received_frames) == 100:
                 self.stop_time = time.time()
+                print('timer stop')
             #print('received frame: ' + str(len(self.received_frames)))
             
 
@@ -324,7 +328,7 @@ class TestPeer(unittest.TestCase):
             await self.peer.close()
             await self.peer2.close()
 
-    #@unittest.skip("demonstrating skipping")
+    # @unittest.skip("demonstrating skipping")
     @async_test
     async def test_video_player(self):
 
@@ -335,7 +339,7 @@ class TestPeer(unittest.TestCase):
             #print('received frame: ' + str(len(self.received_frames)))
 
         self.peer2 = Peer('ws://localhost:8080',
-                          peer_type='media-player', id='player1', media_source='/test/SampleVideo_1280x720_1mb.mp4', media_source_format='mp4')
+                          peer_type='media-player', id='player1', media_source='./test/SampleVideo_1280x720_1mb.mp4', media_source_format='mp4')
         self.peer = Peer('ws://localhost:8080',
                          peer_type='media-client', id='client1', frame_consumer=frame_consumer)
 
@@ -352,14 +356,16 @@ class TestPeer(unittest.TestCase):
         print('connected!')
 
         async def wait_frames():
-            print('Waiting video to complete...')
             while len(self.received_frames) < 130:
                 await asyncio.sleep(0.1)
         try:
-            await asyncio.wait_for(wait_frames(), timeout=7.0)
+            print('Waiting video to complete...')
+            # await asyncio.wait_for(wait_frames(), timeout=7.0)
+            await self.peer2.disconnection_event.wait()
             self.assertTrue(len(self.received_frames) >= 130)
         except asyncio.TimeoutError:
             print('timeout!')
+            print('Frames:', len(self.received_frames))
         finally:
             await self.peer.disconnect()
             await self.peer2.disconnect()
