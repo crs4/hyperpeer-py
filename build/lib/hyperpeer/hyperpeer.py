@@ -462,7 +462,7 @@ class Peer:
             if not error:
                 return
             if not isinstance(error, asyncio.CancelledError):
-                logging.error("A task raised and exception: %s", str(error))
+                logging.error("A task raised an exception: %s", str(error))
             return
         task.cancel()
         try:

@@ -1,2 +1,3 @@
 aiortc==0.9.28
 websockets
+numpy==1.19.1
