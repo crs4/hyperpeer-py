@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="hyperpeer-py",
-    version="0.1.7",
+    version="0.1.8",
     author="Jose F. Saenz-Cogollo",
     author_email="jsaenz@crs4.it",
     description="Python module for implementing media servers or backend peers in applications based on Hyperpeer",

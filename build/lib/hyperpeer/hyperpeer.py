@@ -17,6 +17,7 @@ import inspect
 import time
 import logging
 import fractions
+import traceback
 
 class PeerState(Enum):
     """
@@ -87,7 +88,7 @@ class FrameGeneratorTrack(MediaStreamTrack):
         try:
             frame = next(self.generator)
         except Exception as err:
-            logging.exception(err)
+            logging.exception(err, traceback.format_exc())
             raise
         video_frame = VideoFrame.from_ndarray(frame, format='bgr24')
         pts, time_base = await self.next_timestamp()
@@ -112,7 +113,11 @@ class FrameConsumerFeeder:
             time_base = video_frame.time_base
             #logging.debug(str(time.time()-self.last_time))
             self.last_time = time.time()
-            self.consumer(frame)
+            try:
+                self.consumer(frame)
+            except Exception as e:
+                logging.exception(e, traceback.format_exc())
+                raise
 
 class Peer:
     """
@@ -573,11 +578,15 @@ class Peer:
                 except:
                     raise TypeError('Received an invalid json message data')
                 self._data = data
-                for handler in self._data_handlers:
-                    if inspect.iscoroutinefunction(handler):
-                        await handler(data)
-                    else:
-                        handler(data)
+                try:
+                    for handler in self._data_handlers:
+                        if inspect.iscoroutinefunction(handler):
+                            await handler(data)
+                        else:
+                            handler(data)
+                except Exception as e:
+                    logging.exception(e, traceback.format_exc())
+                    raise e
 
             @self._datachannel.on('close')
             async def on_close():
