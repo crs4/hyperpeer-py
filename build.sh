@@ -1,2 +1,2 @@
 #!/bin/bash
-docker build -t 156.148.14.162/hyperpeer-py:latest -t 156.148.14.162/hyperpeer-py:v0.1.8 .
+docker build -t harbor.crs4.it/riale/hyperpeer-py:latest -t harbor.crs4.it/riale/hyperpeer-py:v0.1.10 .

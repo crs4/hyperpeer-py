@@ -1,12 +1,11 @@
-Metadata-Version: 1.2
+Metadata-Version: 2.1
 Name: hyperpeer-py
-Version: 0.1.8
+Version: 0.2.0
 Summary: Python module for implementing media servers or backend peers in applications based on Hyperpeer
 Home-page: https://github.com/crs4/hyperpeer-py
 Author: Jose F. Saenz-Cogollo
 Author-email: jsaenz@crs4.it
 License: UNKNOWN
-Description-Content-Type: text/markdown
 Description: # hyperpeer-py 
         hyperpeer-py is the python module for implementing media servers or backend peers in applications based on Hyperpeer. This module provides a class called [Peer](#Peer) which manages both the connection with the signaling server and the peer-to-peer communication via WebRTC with remote peers. It also provides an __Enum__ class called [PeerState](#peerstate) that defines the possible states of a [Peer](#peer) instance. 
         
@@ -288,3 +287,4 @@ Classifier: License :: OSI Approved :: GPL-3.0 License
 Classifier: Operating System :: POSIX :: Linux
 Classifier: Operating System :: MacOS :: MacOS X
 Requires-Python: >=3.7
+Description-Content-Type: text/markdown

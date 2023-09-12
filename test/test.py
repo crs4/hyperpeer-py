@@ -237,12 +237,12 @@ class TestPeer(unittest.TestCase):
 
         self.peer2.add_data_handler(on_data)
 
-        async def peer2_actions():
-            await self.peer2.listen_connections()
-            await self.peer2.accept_connection()
+        async def peer1_actions():
+            await self.peer.listen_connections()
+            await self.peer.accept_connection()
         print('connecting...')
-        peer2_task = asyncio.create_task(peer2_actions())
-        peer1_task = asyncio.create_task(self.peer.connect_to('server2'))
+        peer1_task = asyncio.create_task(peer1_actions())
+        peer2_task = asyncio.create_task(self.peer2.connect_to('server1'))
         await asyncio.gather(peer1_task, peer2_task)
         print('connected!')
         sender_task = asyncio.create_task(sender())

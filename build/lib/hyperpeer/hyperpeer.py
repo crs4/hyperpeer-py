@@ -225,7 +225,7 @@ class Peer:
     ```
     """
     def __init__(self, serverAddress, peer_type='media-server', id=None, key=None, media_source=None, media_sink=None, 
-                 frame_generator=None, frame_consumer=None, frame_rate=30, ssl_context=None, datachannel_options=None, media_source_format=None):
+                 frame_generator=None, frame_consumer=None, frame_rate=30, ssl_context=None, datachannel_options=None, media_source_format='autodetect', media_options={}):
         self.url = serverAddress + '/' + peer_type
         if id:
            self.url += '/' + id
@@ -256,12 +256,13 @@ class Peer:
                 raise Exception('Empty media source path!')
             else:
                 try:
-                    MediaPlayer(media_source)
+                    MediaPlayer(media_source, format=media_source_format, options=media_options)
                 except Exception as av_error:
                     logging.exception('Media source error: ' + str(av_error))
                     raise
         self._media_source = media_source
         self._media_source_format = media_source_format   
+        self._media_options = media_options   
         self._player = None     
     
     def _set_readyState(self, new_state):
@@ -486,13 +487,13 @@ class Peer:
             self.disconnection_event.set()
         self._set_readyState(PeerState.DISCONNECTING)
         logging.info('canceling tasks...')
-        if self._track_consumer_task:
+        if self._track_consumer_task != None:
             await self._cancel_task(self._track_consumer_task)
-        if self._handle_candidates_task:
+        if self._handle_candidates_task != None:
             await self._cancel_task(self._handle_candidates_task)
-        if self._remote_track_monitor_task:
+        if self._remote_track_monitor_task != None:
             await self._cancel_task(self._remote_track_monitor_task)
-        if not self._connection_monitor_task.done():
+        if self._connection_monitor_task != None:
             await self._cancel_task(self._connection_monitor_task)
         logging.info('closing peer connection...')
         await self._pc.close()
@@ -563,7 +564,7 @@ class Peer:
         """
         (*Coroutine*) Handle the establishment of the WebRTC peer connection.
         """
-        ice_servers = [RTCIceServer('stun:stun.l.google.com:19302'), RTCIceServer('stun:stun2.l.google.com:19302'), RTCIceServer('stun:stunserver.org:3478')]
+        ice_servers = [RTCIceServer('stun:stun.l.google.com:19302'), RTCIceServer('stun:stun2.l.google.com:19302')]#, RTCIceServer('stun:stunserver.org:3478')]
         
         self._pc = RTCPeerConnection(RTCConfiguration(ice_servers))
 
@@ -640,11 +641,9 @@ class Peer:
         
         # Add media tracks
         if self._media_source:
-            if self._media_source_format:
-                self._player = MediaPlayer(
-                    self._media_source, format=self._media_source_format)
-            else:
-                self._player = MediaPlayer(self._media_source)
+            self._player = MediaPlayer(
+                    self._media_source, format=self._media_source_format, options=self._media_options)
+            
             if self._player.audio:
                 self._pc.addTrack(self._player.audio)
             if self._player.video:
