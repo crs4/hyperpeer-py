@@ -536,7 +536,7 @@ class Peer:
                     sdpMLineIndex=signal['candidate']['sdpMLineIndex'],
                     sdpMid=signal['candidate']['sdpMid'])
                 logging.debug(candidate)
-                self._pc.addIceCandidate(candidate)
+                await self._pc.addIceCandidate(candidate)
             else:
                 raise Exception('Received an unexpected signal: ', signal)
 

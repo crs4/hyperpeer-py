@@ -1,6 +1,6 @@
 Metadata-Version: 2.1
 Name: hyperpeer-py
-Version: 0.2.0
+Version: 0.3.1
 Summary: Python module for implementing media servers or backend peers in applications based on Hyperpeer
 Home-page: https://github.com/crs4/hyperpeer-py
 Author: Jose F. Saenz-Cogollo
